@@ -10,6 +10,10 @@ module Data.X509.Memory
     ( readKeyFileFromMemory
     , readSignedObjectFromMemory
     , pemToKey
+    , dsaToPEM
+    , rsaToPEM
+    , dsaToASN1
+    , rsaToASN1
     ) where
 
 import Data.ASN1.Types
@@ -17,7 +21,7 @@ import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.Maybe
 import qualified Data.X509 as X509
-import Data.PEM (pemParseBS, pemContent, pemName, PEM)
+import Data.PEM (pemParseBS, pemContent, pemName, PEM(PEM))
 import qualified Data.ByteString as B
 import qualified Crypto.PubKey.DSA as DSA
 import qualified Crypto.PubKey.RSA as RSA
@@ -54,6 +58,23 @@ pemToKey acc pem =
         tryDSA asn1 = case dsaFromASN1 asn1 of
                     Left _      -> Nothing
                     Right (k,_) -> Just $ X509.PrivKeyDSA $ DSA.toPrivateKey k
+
+dsaToPEM :: DSA.KeyPair -> PEM
+dsaToPEM keyPair = PEM "DSA PRIVATE KEY" [] $ encodeASN1' DER $ dsaToASN1 keyPair
+
+rsaToPEM :: RSA.PrivateKey -> PEM
+rsaToPEM privKey = PEM "RSA PRIVATE KEY" [] $ encodeASN1' DER $ rsaToASN1 privKey
+
+dsaToASN1 :: DSA.KeyPair -> [ASN1]
+dsaToASN1 (DSA.KeyPair params pub priv) =
+  [ Start Sequence
+  , IntVal 0
+  , IntVal $ DSA.params_p params
+  , IntVal $ DSA.params_q params
+  , IntVal $ DSA.params_g params
+  , IntVal pub
+  , IntVal priv
+  , End Sequence]
 
 dsaFromASN1 :: [ASN1] -> Either String (DSA.KeyPair, [ASN1])
 dsaFromASN1 (Start Sequence : IntVal n : xs)
@@ -108,3 +129,18 @@ rsaFromASN1 ( Start Sequence
      in either Left (\(k, _) -> Right (k, xs)) inner
 rsaFromASN1 _ =
     Left "rsaFromASN1: unexpected format"
+
+rsaToASN1 :: RSA.PrivateKey -> [ASN1]
+rsaToASN1 privKey =
+  [ Start Sequence
+  , IntVal 0
+  , IntVal $ RSA.public_n     pubKey
+  , IntVal $ RSA.public_e     pubKey
+  , IntVal $ RSA.private_d    privKey
+  , IntVal $ RSA.private_p    privKey
+  , IntVal $ RSA.private_q    privKey
+  , IntVal $ RSA.private_dP   privKey
+  , IntVal $ RSA.private_dQ   privKey
+  , IntVal $ RSA.private_qinv privKey
+  , End Sequence ]
+    where pubKey = RSA.private_pub privKey
